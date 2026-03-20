@@ -10,7 +10,7 @@ services:
       - influxdb_data:/var/lib/influxdb2
       - influxdb_config:/etc/influxdb2
     env_file:
-      - .env
+      - config/.env
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
       DOCKER_INFLUXDB_INIT_USERNAME: ${DOCKER_INFLUXDB_USERNAME}

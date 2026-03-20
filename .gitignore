@@ -6,6 +6,7 @@ __pycache__/
 ff-env/
 venv/
 env/
+.venv
 
 # Editor temporary files
 *.swp
@@ -16,7 +17,6 @@ logs/
 *.log
 
 # Credentials (do NOT upload real ones)
-.env
 config/.env
 *.env
 
