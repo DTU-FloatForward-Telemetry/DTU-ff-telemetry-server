@@ -31,15 +31,26 @@ def on_message(client, userdata, msg):
     try:
         data = json.loads(payload)
 
-        speed = data.get("speed")
-        direction = data.get("direction")
+        speed_min = data.get("speedMin")
+        speed_max = data.get("speedMax")
+        power_min = data.get("powerMin")
+        power_max = data.get("powerMax")
+        message = data.get("message")
 
-        print(f"⚙️ Parsed command:")
-        print(f"   Speed: {speed}")
-        print(f"   Direction: {direction}")
+        if speed_min is not None or speed_max is not None:
+            print(f"🚤 Target speed range: {speed_min} – {speed_max} knots")
+            # 👉 ESP32 logic: set_target_speed_range(speed_min, speed_max)
 
-        # 👉 Here is where ESP32 logic would go
-        # e.g. set_motor_speed(speed)
+        if power_min is not None or power_max is not None:
+            print(f"⚡ Target power range: {power_min} – {power_max} kW")
+            # 👉 ESP32 logic: set_target_power_range(power_min, power_max)
+
+        if message is not None:
+            print(f"💬 Free message: {message}")
+            # 👉 ESP32 logic: handle_free_message(message)
+
+        if not data:
+            print("⚠️ Empty command received")
 
     except json.JSONDecodeError:
         print("❌ Invalid JSON format")
