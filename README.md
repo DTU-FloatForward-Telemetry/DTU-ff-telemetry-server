@@ -17,25 +17,34 @@ Designed to run on the **DTU mini-PC telemetry server**.
 
 # ⚡ System Architecture
 
+## Bidirectional Communication Flow
+
+### **Uplink** (Boat → Server: Telemetry Data)
 ```
 ESP32 / Simulator
-        │
-        ▼
-   HiveMQ Cloud
- (MQTT over TLS)
-        │
-        ▼
-   MQTT Bridge
-  (Python script)
-        │
-        ▼
-    InfluxDB
-        │
-        ▼
-      Grafana
-        │
-        ▼
- Cloudflare Tunnel
+    │ (publishes telemetry)
+    ▼
+HiveMQ Cloud (boat/telemetry/#)
+    │
+    ▼
+mqtt_subscriber_real_test.py
+    │ (receives & processes)
+    ▼
+Your Application / InfluxDB
+```
+
+### **Downlink** (Server → Boat: Commands)
+```
+Your API
+    │ (publishes commands)
+    ▼
+HiveMQ Cloud (boat/message/#)
+    │
+    ▼
+downlink_listener.py
+    │ (receives & forwards)
+    ▼
+ESP32 (via serial/wireless)
 ```
 
 ---
@@ -43,11 +52,14 @@ ESP32 / Simulator
 # 📂 Project Structure
 
 ```
-ff_server/
+DTU-ff-telemetry-server/
 │
 ├── src/
-│   ├── mqtt_bridge.py          # Main telemetry pipeline
-│   ├── esp32_simulator.py      # Telemetry generator (test)
+│   ├── downlink_listener.py              # Receives API commands from HiveMQ → forwards to ESP32
+│   ├── mqtt_subscriber_real_test.py      # Uplink: receives telemetry FROM boat
+│   ├── mqtt_subscriber_basic_test.py     # Basic test version (no real credentials)
+│   ├── esp32_simulator_real.py           # Realistic ESP32 simulator (publishes telemetry)
+│   ├── esp32_simulator_basic.py          # Basic ESP32 simulator
 │   └── __init__.py
 │
 ├── config/
@@ -56,11 +68,10 @@ ff_server/
 ├── tools/
 │   └── cloudflared.deb         # Optional Cloudflare installer
 │
-├── old_scripts/                # Previous Raspberry Pi code
+├── old_scripts/                # Previous scripts (legacy)
 │
-├── docker-compose.yml          # InfluxDB + Grafana
+├── docker-compose.yml          # InfluxDB + Grafana containers
 ├── requirements.txt
-├── .gitignore
 └── README.md
 ```
 
@@ -68,58 +79,117 @@ ff_server/
 
 # 🚀 Running the Telemetry Pipeline
 
-## 1️⃣ Activate Python Virtual Environment
+## Setup
+
+### 1️⃣ Activate Python Virtual Environment
 
 ```bash
 source ff-env/bin/activate
 ```
 
-## 2️⃣ Install dependencies
+### 2️⃣ Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
+### 3️⃣ Configure Environment Variables
+
+Create `config/.env` with your HiveMQ credentials:
+
+```
+HIVEMQ_HOST=your-broker.hivemq.cloud
+HIVEMQ_PORT=8883
+HIVEMQ_USER=your_username
+HIVEMQ_PASSWORD=your_password
+```
+
 ---
 
-## 3️⃣ Run the MQTT Bridge  
-(HiveMQ → InfluxDB)
+## Testing Uplink (Boat → Server)
+
+**Test that telemetry flows from the boat to your server.**
+
+### Option A: Using ESP32 Simulator
+
+Terminal 1 - Start simulator:
+```bash
+python src/esp32_simulator_real.py
+```
+
+Terminal 2 - Subscribe to telemetry:
+```bash
+python src/mqtt_subscriber_real_test.py
+```
+
+Expected output in Terminal 2:
+```
+Connected: 0
+boat/telemetry/gps/speed -> 3.87
+boat/telemetry/battery/1/voltage -> 52.4
+boat/telemetry/battery/2/voltage -> 51.9
+```
+
+**What's happening:**
+- The simulator publishes telemetry to HiveMQ topics
+- The subscriber receives and displays that data in real-time
+- Data is also visible in HiveMQ web dashboard under `boat/telemetry/#`
+
+### Option B: Using Real ESP32
+
+Simply run the subscriber without the simulator:
+```bash
+python src/mqtt_subscriber_real_test.py
+```
+
+The real ESP32 will publish telemetry, and you'll see it displayed.
+
+---
+
+## Testing Downlink (Server → Boat)
+
+**Test that commands flow from your API to the boat.**
 
 ```bash
-python src/mqtt_subscriber_basic_test.py
+python src/downlink_listener.py
 ```
 
 Expected output:
-
 ```
-Connected OK!
-Subscribed to boat/telemetry/#
-Received gps/speed = 4.3
---- Wrote 1 telemetry row to InfluxDB ---
+Connected: 0
+Subscribed to boat/message/#
+Waiting for commands from API...
 ```
 
-The bridge:
-
-- Subscribes to **all telemetry topics**  
-- Parses MQTT payloads  
-- Stores processed data in InfluxDB (1 Hz)
+**What's happening:**
+- The listener subscribes to `boat/message/#` topics
+- When your API publishes a command (e.g., `boat/message/power: ON`), the listener receives it
+- It processes the command and forwards it to the ESP32 via serial connection
 
 ---
 
-## 4️⃣ Run the ESP32 Simulator  
-(Generates realistic boat telemetry)
+## Full Integration Test
 
+Run all three in separate terminals:
+
+Terminal 1 (Simulator):
 ```bash
-python src/esp32_simulator_basic.py
+python src/esp32_simulator_real.py
 ```
 
-Example output:
-
-```
-Published boat/telemetry/gps/speed: 3.87
-Published boat/telemetry/battery/1/voltage: 52.4
+Terminal 2 (Uplink):
+```bash
+python src/mqtt_subscriber_real_test.py
 ```
 
-Perfect for development without boat hardware.
+Terminal 3 (Downlink):
+```bash
+python src/downlink_listener.py
+```
+
+You should see:
+- Simulator publishing telemetry
+- Subscriber receiving telemetry
+- Listener receiving the command and forwarding to "ESP32"
 
 ---

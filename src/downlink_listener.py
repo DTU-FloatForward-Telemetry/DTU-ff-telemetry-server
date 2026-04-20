@@ -3,14 +3,17 @@ from dotenv import load_dotenv
 import os
 import json
 
-load_dotenv('config/.env')
+load_dotenv("config/.env")
 
 BROKER = os.getenv("HIVEMQ_HOST")
 PORT = int(os.getenv("HIVEMQ_PORT"))
 USER = os.getenv("HIVEMQ_USER")
 PASSWORD = os.getenv("HIVEMQ_PASSWORD")
 
-TOPIC = "boat/commands/motor"
+TOPICS = [
+    ("boat/message/text", 1),
+    ("boat/message/power", 1),
+]
 
 # ==========================
 # MQTT callbacks
@@ -18,42 +21,47 @@ TOPIC = "boat/commands/motor"
 def on_connect(client, userdata, flags, rc, properties=None):
     if rc == 0:
         print("✅ Connected to HiveMQ")
-        client.subscribe(TOPIC)
-        print(f"📡 Subscribed to {TOPIC}")
+
+        for topic, qos in TOPICS:
+            client.subscribe(topic, qos=qos)
+            print(f"📡 Subscribed to {topic} (QoS {qos})")
     else:
-        print("❌ Connection failed")
+        print(f"❌ Connection failed with code: {rc}")
+
 
 def on_message(client, userdata, msg):
-    payload = msg.payload.decode()
+    topic = msg.topic
+    payload = msg.payload.decode().strip()
 
-    print(f"\n📩 RAW MESSAGE: {payload}")
+    print(f"\n📩 Topic: {topic}")
+    print(f"📦 RAW MESSAGE: {payload}")
 
-    try:
-        data = json.loads(payload)
+    if topic == "boat/message/text":
+        if payload:
+            print(f"💬 Free message: {payload}")
+            # 👉 ESP32 logic: handle_free_message(payload)
+        else:
+            print("⚠️ Empty text message received")
 
-        speed_min = data.get("speedMin")
-        speed_max = data.get("speedMax")
-        power_min = data.get("powerMin")
-        power_max = data.get("powerMax")
-        message = data.get("message")
+    elif topic == "boat/message/power":
+        try:
+            data = json.loads(payload)
 
-        if speed_min is not None or speed_max is not None:
-            print(f"🚤 Target speed range: {speed_min} – {speed_max} knots")
-            # 👉 ESP32 logic: set_target_speed_range(speed_min, speed_max)
+            power_min = data.get("powerMin")
+            power_max = data.get("powerMax")
 
-        if power_min is not None or power_max is not None:
-            print(f"⚡ Target power range: {power_min} – {power_max} kW")
-            # 👉 ESP32 logic: set_target_power_range(power_min, power_max)
+            if power_min is not None or power_max is not None:
+                print(f"⚡ Target power range: {power_min} – {power_max} kW")
+                # 👉 ESP32 logic: set_target_power_range(power_min, power_max)
+            else:
+                print("⚠️ Power JSON received but no powerMin/powerMax found")
 
-        if message is not None:
-            print(f"💬 Free message: {message}")
-            # 👉 ESP32 logic: handle_free_message(message)
+        except json.JSONDecodeError:
+            print("❌ Invalid JSON format on boat/message/power")
 
-        if not data:
-            print("⚠️ Empty command received")
+    else:
+        print("⚠️ Message received on unexpected topic")
 
-    except json.JSONDecodeError:
-        print("❌ Invalid JSON format")
 
 # ==========================
 # MQTT client setup
