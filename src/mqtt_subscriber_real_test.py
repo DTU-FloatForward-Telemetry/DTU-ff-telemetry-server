@@ -116,6 +116,10 @@ ALLOWED_TOPICS = {
 
     # IMU
     "imu/batch",
+
+    #Load cell
+    "thrust/loadcell_n",
+    "thrust/propeller_n",
 }
 
 # =========================================================
@@ -162,6 +166,10 @@ TOPIC_TYPES = {
 
     # IMU
     "imu/batch": str,
+
+    #Load cell
+    "thrust/loadcell_n": float,
+    "thrust/propeller_n": float,
 }
 
 # =========================================================
