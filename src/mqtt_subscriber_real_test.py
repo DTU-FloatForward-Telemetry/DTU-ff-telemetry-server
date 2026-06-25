@@ -101,6 +101,12 @@ ALLOWED_TOPICS = {
     "motor/power",
     "motor/speed",
     "motor/direction",
+    "motor/current",
+    "motor/voltage_dc",
+    "motor/torque",
+    "motor/temp_motor"
+    "motor/temp_inverter",
+    "motor/emcy"
 
     # GPS
     "gps/status",
@@ -151,6 +157,12 @@ TOPIC_TYPES = {
     "motor/power": float,
     "motor/speed": float,
     "motor/direction": str,
+    "motor/current": float,
+    "motor/voltage_dc": float,
+    "motor/torque": float,
+    "motor/temp_motor": float,
+    "motor/temp_inverter": float,
+    "motor/emcy": str,
 
     # GPS
     "gps/status": int,
