@@ -104,9 +104,9 @@ ALLOWED_TOPICS = {
     "motor/current",
     "motor/voltage_dc",
     "motor/torque",
-    "motor/temp_motor"
+    "motor/temp_motor",
     "motor/temp_inverter",
-    "motor/emcy"
+    "motor/emcy",
 
     # GPS
     "gps/status",
@@ -341,6 +341,49 @@ def on_message(
 
             print(
                 f"Invalid IMU batch: {e}"
+            )
+
+        return
+
+    # =========================================================
+    # Motor emcy handling
+    # =========================================================
+
+    if topic_key == "motor/emcy":
+
+        try:
+
+            emcy = json.loads(payload)
+
+            p = (
+                Point("telemetry")
+                .tag("object", "boat")
+                .field(
+                    "motor_emcy_code",
+                    int(emcy["code"])
+                )
+                .field(
+                    "motor_emcy_event",
+                    int(emcy["event"])
+                )
+            )
+
+            write_api.write(
+                bucket=INFLUXDB_BUCKET,
+                org=INFLUXDB_ORG,
+                record=p
+            )
+
+            print(
+                f"Written motor/emcy to InfluxDB: "
+                f"code={emcy['code']} "
+                f"event={emcy['event']}"
+            )
+
+        except Exception as e:
+
+            print(
+                f"Invalid motor/emcy payload: {e}"
             )
 
         return
