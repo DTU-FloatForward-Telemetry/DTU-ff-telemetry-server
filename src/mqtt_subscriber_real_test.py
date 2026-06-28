@@ -91,6 +91,32 @@ ALLOWED_TOPICS = {
     "battery/1/soc",
     "battery/2/soc",
 
+    "battery/1/power",
+    "battery/2/power",
+
+    "battery/1/boardtemp",
+    "battery/2/boardtemp",
+
+    "battery/1/totenergy",
+    "battery/2/totenergy",
+
+    "battery/1/loaddetect",
+    "battery/2/loaddetect",
+
+    "battery/1/status",
+    "battery/2/status",
+
+    # HV battery faults
+    "battery/1/fault/thermal_runaway",
+    "battery/1/fault/dischg_mos_stuck",
+    "battery/1/fault/short_circuit",
+    "battery/1/fault/chg_mos_stuck",
+
+    "battery/2/fault/thermal_runaway",
+    "battery/2/fault/dischg_mos_stuck",
+    "battery/2/fault/short_circuit",
+    "battery/2/fault/chg_mos_stuck",
+
     # LV battery
     "battery/3/voltage",
 
@@ -99,6 +125,8 @@ ALLOWED_TOPICS = {
     "dht/hum",
 
     # Motor
+    "motor/valid",
+    "motor/enabled",
     "motor/power",
     "motor/speed",
     "motor/direction",
@@ -150,6 +178,32 @@ TOPIC_TYPES = {
     "battery/1/soc": float,
     "battery/2/soc": float,
 
+    "battery/1/power": float,
+    "battery/2/power": float,
+
+    "battery/1/boardtemp": float,
+    "battery/2/boardtemp": float,
+
+    "battery/1/totenergy": float,
+    "battery/2/totenergy": float,
+
+    "battery/1/loaddetect": str,
+    "battery/2/loaddetect": str,
+
+    "battery/1/status": str,
+    "battery/2/status": str,
+
+    # HV battery faults
+    "battery/1/fault/thermal_runaway": int,
+    "battery/1/fault/dischg_mos_stuck": int,
+    "battery/1/fault/short_circuit": int,
+    "battery/1/fault/chg_mos_stuck": int,
+
+    "battery/2/fault/thermal_runaway": int,
+    "battery/2/fault/dischg_mos_stuck": int,
+    "battery/2/fault/short_circuit": int,
+    "battery/2/fault/chg_mos_stuck": int,
+
     # LV battery
     "battery/3/voltage": float,
 
@@ -158,6 +212,8 @@ TOPIC_TYPES = {
     "dht/hum": float,
 
     # Motor
+    "motor/valid": int,
+    "motor/enabled": int,
     "motor/power": float,
     "motor/speed": float,
     "motor/direction": str,
