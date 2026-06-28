@@ -1,6 +1,7 @@
 import os
 import paho.mqtt.client as mqtt
 from pathlib import Path
+from datetime import datetime
 import json
 
 from dotenv import load_dotenv
@@ -13,6 +14,33 @@ from influxdb_client import (
 from influxdb_client.client.write_api import (
     WriteOptions,
 )
+
+# =========================================================
+# Terminal colors
+# =========================================================
+
+COLORS = {
+    "battery": "\033[33m",   # yellow
+    "motor":   "\033[36m",   # cyan
+    "gps":     "\033[32m",   # green
+    "imu":     "\033[35m",   # magenta
+    "dht":     "\033[34m",   # blue
+    "thrust":  "\033[96m",   # bright cyan
+    "rotary":  "\033[94m",   # bright blue
+    "WARN":    "\033[91m",   # red
+    "RESET":   "\033[0m",
+    "DIM":     "\033[2m",
+}
+
+def log(topic_key: str, value):
+    group = topic_key.split("/")[0]
+    color = COLORS.get(group, COLORS["RESET"])
+    ts = datetime.now().strftime("%H:%M:%S")
+    print(f"{COLORS['DIM']}{ts}{COLORS['RESET']}  {color}{topic_key:<35}{COLORS['RESET']} {value}")
+
+def log_warn(msg: str):
+    ts = datetime.now().strftime("%H:%M:%S")
+    print(f"{COLORS['DIM']}{ts}{COLORS['RESET']}  {COLORS['WARN']}{msg}{COLORS['RESET']}")
 
 # =========================================================
 # Load environment variables
@@ -317,10 +345,7 @@ def on_message(
 
     # Ignore unknown topics
     if topic_key not in ALLOWED_TOPICS:
-        print(
-            f"Ignored unknown topic: "
-            f"{msg.topic}"
-        )
+        log_warn(f"Ignored unknown topic: {msg.topic}")
         return
 
     payload = msg.payload.decode().strip()
@@ -394,16 +419,11 @@ def on_message(
                 record=points
             )
 
-            print(
-                f"Written {len(points)} "
-                f"IMU samples to InfluxDB"
-            )
+            log("imu/batch", f"{len(points)} samples")
 
         except Exception as e:
 
-            print(
-                f"Invalid IMU batch: {e}"
-            )
+            log_warn(f"Invalid IMU batch: {e}")
 
         return
 
@@ -436,17 +456,11 @@ def on_message(
                 record=p
             )
 
-            print(
-                f"Written motor/emcy to InfluxDB: "
-                f"code={emcy['code']} "
-                f"event={emcy['event']}"
-            )
+            log("motor/emcy", f"code={emcy['code']} event={emcy['event']}")
 
         except Exception as e:
 
-            print(
-                f"Invalid motor/emcy payload: {e}"
-            )
+            log_warn(f"Invalid motor/emcy payload: {e}")
 
         return
 
@@ -466,25 +480,15 @@ def on_message(
             value = payload
 
     except ValueError:
-        print(
-            f"Invalid payload type for "
-            f"{topic_key}: {payload}"
-        )
+        log_warn(f"Invalid payload type for {topic_key}: {payload}")
         return
-
-    print(
-        f"{msg.topic} -> {value}"
-    )
 
     # =========================================================
     # Validate motor direction enum
     # =========================================================
     if topic_key == "motor/direction":
         if value not in VALID_MOTOR_DIRECTIONS:
-            print(
-                f"Invalid motor direction: "
-                f"{value}"
-            )
+            log_warn(f"Invalid motor direction: {value}")
             return
 
     # =========================================================
@@ -492,10 +496,7 @@ def on_message(
     # =========================================================
     if topic_key == "gps/valid":
         if value not in (0, 1):
-            print(
-                f"Invalid gps/valid value: "
-                f"{value}"
-            )
+            log_warn(f"Invalid gps/valid value: {value}")
             return
 
     # Write to InfluxDB
@@ -514,10 +515,7 @@ def on_message(
         record=p
     )
 
-    print(
-        f"Written to InfluxDB: "
-        f"{topic_key} = {value}"
-    )
+    log(topic_key, value)
 
 
 # =========================================================
