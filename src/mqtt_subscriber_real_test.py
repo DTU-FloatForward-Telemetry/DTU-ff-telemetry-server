@@ -96,6 +96,7 @@ ALLOWED_TOPICS = {
 
     # DHT
     "dht/temp",
+    "dht/hum",
 
     # Motor
     "motor/power",
@@ -126,6 +127,8 @@ ALLOWED_TOPICS = {
     #Load cell
     "thrust/loadcell_n",
     "thrust/propeller_n",
+    # Rotary encoder
+    "rotary/angle_deg",
 }
 
 # =========================================================
@@ -152,6 +155,7 @@ TOPIC_TYPES = {
 
     # DHT
     "dht/temp": float,
+    "dht/hum": float,
 
     # Motor
     "motor/power": float,
@@ -182,6 +186,8 @@ TOPIC_TYPES = {
     #Load cell
     "thrust/loadcell_n": float,
     "thrust/propeller_n": float,
+    # Rotary encoder
+    "rotary/angle_deg": float,
 }
 
 # =========================================================
