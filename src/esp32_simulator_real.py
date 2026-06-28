@@ -183,6 +183,50 @@ class SimState:
         default_factory=lambda: [96.2, 95.8]
     )
 
+    batt_power: List[float] = field(
+        default_factory=lambda: [0.0, 0.0]
+    )
+
+    batt_boardtemp: List[float] = field(
+        default_factory=lambda: [28.0, 28.5]
+    )
+
+    batt_totenergy: List[float] = field(
+        default_factory=lambda: [500.0, 500.0]
+    )
+
+    batt_status: List[str] = field(
+        default_factory=lambda: ["discharging", "discharging"]
+    )
+
+    batt_loaddetect: List[str] = field(
+        default_factory=lambda: ["connected", "connected"]
+    )
+
+    motor_valid: int = 1
+
+    motor_enabled: int = 1
+
+    motor_voltage_dc: float = 52.0
+
+    motor_current: float = 15.0
+
+    motor_torque: float = 12.0
+
+    motor_temp_motor: float = 35.0
+
+    motor_temp_inverter: float = 40.0
+
+    dht_hum: float = 55.0
+
+    thrust_loadcell_n: float = 0.0
+
+    thrust_propeller_n: float = 0.0
+
+    rotary_angle_deg: float = 0.0
+
+    lv_voltage: float = 12.8
+
 
 state = SimState()
 
@@ -443,11 +487,56 @@ def update_state(
     )
 
     state.dht_temp = clamp(
-        state.dht_temp
-        + random.uniform(-0.08, 0.08),
-        18.0,
-        32.0
+        state.dht_temp + random.uniform(-0.08, 0.08),
+        18.0, 32.0
     )
+
+    state.dht_hum = clamp(
+        state.dht_hum + random.uniform(-0.1, 0.1),
+        30.0, 90.0
+    )
+
+    state.motor_valid = 1
+    state.motor_enabled = 1 if state.speed_mps > 0.1 else 0
+
+    state.motor_voltage_dc = clamp(
+        state.motor_voltage_dc + random.uniform(-0.1, 0.1),
+        48.0, 54.6
+    )
+
+    state.motor_current = clamp(
+        state.motor_power_w / max(state.motor_voltage_dc, 1.0),
+        0.0, 50.0
+    )
+
+    state.motor_torque = clamp(
+        state.motor_power_w / max(state.motor_rpm * 2 * math.pi / 60, 1.0),
+        0.0, 30.0
+    )
+
+    state.motor_temp_motor = clamp(
+        state.motor_temp_motor + 0.01 * (state.motor_power_w / 500.0 - 0.5),
+        25.0, 80.0
+    )
+
+    state.motor_temp_inverter = clamp(
+        state.motor_temp_inverter + 0.01 * (state.motor_power_w / 400.0 - 0.5),
+        25.0, 85.0
+    )
+
+    state.thrust_loadcell_n = clamp(
+        state.motor_power_w * 0.012 + random.uniform(-0.5, 0.5),
+        0.0, 40.0
+    )
+
+    state.thrust_propeller_n = clamp(
+        state.thrust_loadcell_n * 0.95 + random.uniform(-0.3, 0.3),
+        0.0, 40.0
+    )
+
+    state.rotary_angle_deg = (
+        state.rotary_angle_deg + random.uniform(-0.5, 0.5)
+    ) % 360.0
 
     for i in range(2):
         discharge = (
@@ -521,69 +610,54 @@ def update_state(
             45.0
         )
 
+        state.batt_power[i] = round(
+            state.batt_v[i] * state.batt_i[i], 2
+        )
+
+        state.batt_boardtemp[i] = clamp(
+            state.batt_boardtemp[i] + random.uniform(-0.05, 0.05),
+            20.0, 50.0
+        )
+
+        state.batt_totenergy[i] = clamp(
+            state.batt_totenergy[i] - state.batt_power[i] * dt / 3600.0,
+            0.0, 1000.0
+        )
+
+        state.batt_status[i] = "discharging" if state.batt_i[i] > 0.5 else "stationary"
+        state.batt_loaddetect[i] = "connected"
+
 
 # =========================================================
 # MQTT PUBLISHERS
 # =========================================================
 
 def frame_batt1():
-    publish_float(
-        "boat/telemetry/battery/1/voltage",
-        state.batt_v[0],
-        2
-    )
-
-    publish_float(
-        "boat/telemetry/battery/1/current",
-        state.batt_i[0],
-        2
-    )
-
-    publish_float(
-        "boat/telemetry/battery/1/temperature",
-        state.batt_t[0],
-        2
-    )
-
-    publish_float(
-        "boat/telemetry/battery/1/soc",
-        state.batt_soc[0],
-        2
-    )
+    publish_float("boat/telemetry/battery/1/voltage",     state.batt_v[0], 2)
+    publish_float("boat/telemetry/battery/1/current",     state.batt_i[0], 2)
+    publish_float("boat/telemetry/battery/1/temperature", state.batt_t[0], 2)
+    publish_float("boat/telemetry/battery/1/soc",         state.batt_soc[0], 2)
+    publish_float("boat/telemetry/battery/1/power",       state.batt_power[0], 2)
+    publish_float("boat/telemetry/battery/1/boardtemp",   state.batt_boardtemp[0], 2)
+    publish_float("boat/telemetry/battery/1/totenergy",   state.batt_totenergy[0], 2)
+    publish_string("boat/telemetry/battery/1/status",     state.batt_status[0])
+    publish_string("boat/telemetry/battery/1/loaddetect", state.batt_loaddetect[0])
 
 
 def frame_batt2():
-    publish_float(
-        "boat/telemetry/battery/2/voltage",
-        state.batt_v[1],
-        2
-    )
-
-    publish_float(
-        "boat/telemetry/battery/2/current",
-        state.batt_i[1],
-        2
-    )
-
-    publish_float(
-        "boat/telemetry/battery/2/temperature",
-        state.batt_t[1],
-        2
-    )
-
-    publish_float(
-        "boat/telemetry/battery/2/soc",
-        state.batt_soc[1],
-        2
-    )
+    publish_float("boat/telemetry/battery/2/voltage",     state.batt_v[1], 2)
+    publish_float("boat/telemetry/battery/2/current",     state.batt_i[1], 2)
+    publish_float("boat/telemetry/battery/2/temperature", state.batt_t[1], 2)
+    publish_float("boat/telemetry/battery/2/soc",         state.batt_soc[1], 2)
+    publish_float("boat/telemetry/battery/2/power",       state.batt_power[1], 2)
+    publish_float("boat/telemetry/battery/2/boardtemp",   state.batt_boardtemp[1], 2)
+    publish_float("boat/telemetry/battery/2/totenergy",   state.batt_totenergy[1], 2)
+    publish_string("boat/telemetry/battery/2/status",     state.batt_status[1])
+    publish_string("boat/telemetry/battery/2/loaddetect", state.batt_loaddetect[1])
 
 
 def frame_lv_battery():
-    publish_float(
-        "boat/telemetry/battery/3/voltage",
-        12.8,
-        2
-    )
+    publish_float("boat/telemetry/battery/3/voltage", state.lv_voltage, 2)
 
 
 def frame_gps_status():
@@ -654,30 +728,30 @@ def frame_gps_altitude():
 
 
 def frame_motor():
-    publish_float(
-        "boat/telemetry/motor/speed",
-        state.motor_rpm,
-        2
-    )
-
-    publish_float(
-        "boat/telemetry/motor/power",
-        state.motor_power_w,
-        2
-    )
-
-    publish_string(
-        "boat/telemetry/motor/direction",
-        state.motor_direction
-    )
+    publish_float("boat/telemetry/motor/speed",        state.motor_rpm, 2)
+    publish_float("boat/telemetry/motor/power",        state.motor_power_w, 2)
+    publish_float("boat/telemetry/motor/voltage_dc",   state.motor_voltage_dc, 2)
+    publish_float("boat/telemetry/motor/current",      state.motor_current, 2)
+    publish_float("boat/telemetry/motor/torque",       state.motor_torque, 2)
+    publish_float("boat/telemetry/motor/temp_motor",   state.motor_temp_motor, 2)
+    publish_float("boat/telemetry/motor/temp_inverter",state.motor_temp_inverter, 2)
+    publish_string("boat/telemetry/motor/direction",   state.motor_direction)
+    publish_int("boat/telemetry/motor/valid",          state.motor_valid)
+    publish_int("boat/telemetry/motor/enabled",        state.motor_enabled)
 
 
 def frame_dht():
-    publish_float(
-        "boat/telemetry/dht/temp",
-        state.dht_temp,
-        2
-    )
+    publish_float("boat/telemetry/dht/temp", state.dht_temp, 2)
+    publish_float("boat/telemetry/dht/hum",  state.dht_hum, 2)
+
+
+def frame_thrust():
+    publish_float("boat/telemetry/thrust/loadcell_n",  state.thrust_loadcell_n, 3)
+    publish_float("boat/telemetry/thrust/propeller_n", state.thrust_propeller_n, 3)
+
+
+def frame_rotary():
+    publish_float("boat/telemetry/rotary/angle_deg", state.rotary_angle_deg, 2)
 
 
 def publish_imu_batch():
@@ -815,9 +889,13 @@ tasks = [
 
     Task("gps_speed", 0.20, frame_gps_speed),
 
-    Task("motor", 0.10, frame_motor),
+    Task("motor",    0.10, frame_motor),
 
-    Task("dht", 1.00, frame_dht),
+    Task("dht",      1.00, frame_dht),
+
+    Task("thrust",   0.10, frame_thrust),
+
+    Task("rotary",   0.10, frame_rotary),
 
     Task("imu_batch", 1.00, publish_imu_batch),
 ]
