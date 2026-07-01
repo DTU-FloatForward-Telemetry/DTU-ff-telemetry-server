@@ -304,10 +304,13 @@ def on_connect(
         qos=0
     )
 
-    print(
-        "Subscribed to "
-        "boat/telemetry/#"
+    # TEMPORARY: subscribe to OwnTracks GPS
+    client.subscribe(
+        "owntracks/#",
+        qos=0
     )
+
+    print("Subscribed to boat/telemetry/# and owntracks/#")
 
 
 # =========================================================
@@ -338,6 +341,48 @@ def on_message(
         userdata,
         msg
 ):
+    # =========================================================
+    # TEMPORARY: OwnTracks GPS handling
+    # =========================================================
+
+    if msg.topic.startswith("owntracks/") and msg.topic.endswith("/gps"):
+
+        try:
+
+            data = json.loads(msg.payload.decode().strip())
+
+            if data.get("_type") != "location":
+                return
+
+            tst = data.get("tst")
+            if not tst:
+                log_warn("Missing tst in OwnTracks payload")
+                return
+
+            from datetime import timezone
+            ts = datetime.fromtimestamp(int(tst), tz=timezone.utc)
+
+            p = Point("telemetry").tag("object", "boat")
+
+            if "lat"  in data: p = p.field("gps_latitude",  float(data["lat"]))
+            if "lon"  in data: p = p.field("gps_longitude", float(data["lon"]))
+            if "alt"  in data: p = p.field("gps_altitude",  float(data["alt"]))
+            if "vel"  in data: p = p.field("gps_speed",     float(data["vel"]))
+            if "cog"  in data: p = p.field("gps_heading",   float(data["cog"]))
+            if "acc"  in data: p = p.field("gps_accuracy",  float(data["acc"]))
+            if "batt" in data: p = p.field("gps_phone_batt", int(data["batt"]))
+
+            p = p.time(ts)
+
+            write_api.write(bucket=INFLUXDB_BUCKET, org=INFLUXDB_ORG, record=p)
+            log("owntracks/gps", f"lat={data.get('lat')} lon={data.get('lon')} vel={data.get('vel')} tst={tst}")
+
+        except Exception as e:
+
+            log_warn(f"Invalid OwnTracks payload: {e}")
+
+        return
+
     topic_key = msg.topic.replace(
         "boat/telemetry/",
         ""
