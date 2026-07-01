@@ -106,35 +106,11 @@ write_api = client_db.write_api(
 # =========================================================
 
 ALLOWED_TOPICS = {
-    # HV batteries
-    "battery/1/voltage",
-    "battery/2/voltage",
+    # HV batteries (JSON batch)
+    "battery/1",
+    "battery/2",
 
-    "battery/1/current",
-    "battery/2/current",
-
-    "battery/1/temperature",
-    "battery/2/temperature",
-
-    "battery/1/soc",
-    "battery/2/soc",
-
-    "battery/1/power",
-    "battery/2/power",
-
-    "battery/1/boardtemp",
-    "battery/2/boardtemp",
-
-    "battery/1/totenergy",
-    "battery/2/totenergy",
-
-    "battery/1/loaddetect",
-    "battery/2/loaddetect",
-
-    "battery/1/status",
-    "battery/2/status",
-
-    # HV battery faults
+    # HV battery faults (JSON {"status":"FAULT"/"OK","ts":"..."})
     "battery/1/fault/thermal_runaway",
     "battery/1/fault/dischg_mos_stuck",
     "battery/1/fault/short_circuit",
@@ -145,46 +121,17 @@ ALLOWED_TOPICS = {
     "battery/2/fault/short_circuit",
     "battery/2/fault/chg_mos_stuck",
 
-    # LV battery
-    "battery/3/voltage",
-
-    # DHT
-    "dht/temp",
-    "dht/hum",
-
-    # Motor
-    "motor/valid",
-    "motor/enabled",
-    "motor/power",
-    "motor/speed",
-    "motor/direction",
-    "motor/current",
-    "motor/voltage_dc",
-    "motor/torque",
-    "motor/temp_motor",
-    "motor/temp_inverter",
+    # Motor emcy (JSON {"code":X,"event":Y}, no ts)
     "motor/emcy",
-
-    # GPS
-    "gps/status",
-    "gps/speed",
-    "gps/latitude",
-    "gps/longitude",
-    "gps/Nsatellites",
-    "gps/altitude",
-    "gps/roll",
-    "gps/pitch",
-    "gps/heading",
-    "gps/valid",
 
     # IMU
     "imu/batch",
 
-    #Load cell
-    "thrust/loadcell_n",
-    "thrust/propeller_n",
-    # Rotary encoder
-    "rotary/angle_deg",
+    # JSON batch topics with ts
+    "thrust",
+    "motor",
+    "gps",
+    "dht",
 }
 
 # =========================================================
@@ -192,98 +139,8 @@ ALLOWED_TOPICS = {
 # =========================================================
 
 TOPIC_TYPES = {
-
-    # HV batteries
-    "battery/1/voltage": float,
-    "battery/2/voltage": float,
-
-    "battery/1/current": float,
-    "battery/2/current": float,
-
-    "battery/1/temperature": float,
-    "battery/2/temperature": float,
-
-    "battery/1/soc": float,
-    "battery/2/soc": float,
-
-    "battery/1/power": float,
-    "battery/2/power": float,
-
-    "battery/1/boardtemp": float,
-    "battery/2/boardtemp": float,
-
-    "battery/1/totenergy": float,
-    "battery/2/totenergy": float,
-
-    "battery/1/loaddetect": str,
-    "battery/2/loaddetect": str,
-
-    "battery/1/status": str,
-    "battery/2/status": str,
-
-    # HV battery faults
-    "battery/1/fault/thermal_runaway": int,
-    "battery/1/fault/dischg_mos_stuck": int,
-    "battery/1/fault/short_circuit": int,
-    "battery/1/fault/chg_mos_stuck": int,
-
-    "battery/2/fault/thermal_runaway": int,
-    "battery/2/fault/dischg_mos_stuck": int,
-    "battery/2/fault/short_circuit": int,
-    "battery/2/fault/chg_mos_stuck": int,
-
-    # LV battery
-    "battery/3/voltage": float,
-
-    # DHT
-    "dht/temp": float,
-    "dht/hum": float,
-
-    # Motor
-    "motor/valid": int,
-    "motor/enabled": int,
-    "motor/power": float,
-    "motor/speed": float,
-    "motor/direction": str,
-    "motor/current": float,
-    "motor/voltage_dc": float,
-    "motor/torque": float,
-    "motor/temp_motor": float,
-    "motor/temp_inverter": float,
-    "motor/emcy": str,
-
-    # GPS
-    "gps/status": int,
-    "gps/speed": float,
-    "gps/latitude": float,
-    "gps/longitude": float,
-    "gps/Nsatellites": int,
-    "gps/altitude": float,
-    "gps/roll": float,
-    "gps/pitch": float,
-    "gps/heading": float,
-    "gps/valid": int,
-
-    # IMU
-    "imu/batch": str,
-
-    #Load cell
-    "thrust/loadcell_n": float,
-    "thrust/propeller_n": float,
-    # Rotary encoder
-    "rotary/angle_deg": float,
+    # all handled explicitly in on_message — this dict only needed for future fallthrough
 }
-
-# =========================================================
-# Valid enum values
-# =========================================================
-
-VALID_MOTOR_DIRECTIONS = {
-    "Forward",
-    "Reverse",
-    "Neutral",
-}
-
 
 # =========================================================
 # MQTT callbacks
@@ -428,27 +285,33 @@ def on_message(
         return
 
     # =========================================================
-    # Motor emcy handling
+    # Thrust JSON batch handling
     # =========================================================
 
-    if topic_key == "motor/emcy":
+    if topic_key == "thrust":
 
         try:
 
-            emcy = json.loads(payload)
+            data = json.loads(payload)
 
-            p = (
-                Point("telemetry")
-                .tag("object", "boat")
-                .field(
-                    "motor_emcy_code",
-                    int(emcy["code"])
-                )
-                .field(
-                    "motor_emcy_event",
-                    int(emcy["event"])
-                )
-            )
+            ts = data.get("ts")
+
+            p = Point("telemetry").tag("object", "boat")
+
+            if "loadcell_n" in data:
+                p = p.field("thrust_loadcell_n", float(data["loadcell_n"]))
+
+            if "propeller_n" in data:
+                p = p.field("thrust_propeller_n", float(data["propeller_n"]))
+
+            if "angle_deg" in data:
+                p = p.field("rotary_angle_deg", float(data["angle_deg"]))
+
+            if not ts:
+                log_warn(f"Missing ts in thrust payload")
+                return
+
+            p = p.time(datetime.fromisoformat(ts.replace("Z", "+00:00")))
 
             write_api.write(
                 bucket=INFLUXDB_BUCKET,
@@ -456,66 +319,239 @@ def on_message(
                 record=p
             )
 
-            log("motor/emcy", f"code={emcy['code']} event={emcy['event']}")
+            log("thrust", f"loadcell={data.get('loadcell_n')} propeller={data.get('propeller_n')} angle={data.get('angle_deg')} ts={ts}")
+
+        except Exception as e:
+
+            log_warn(f"Invalid thrust payload: {e}")
+
+        return
+
+    # =========================================================
+    # Motor JSON batch handling
+    # =========================================================
+
+    if topic_key == "motor":
+
+        try:
+
+            data = json.loads(payload)
+            ts = data.get("ts")
+
+            p = Point("telemetry").tag("object", "boat")
+
+            float_fields = ["power", "speed", "current", "voltage_dc", "torque", "temp_motor", "temp_inverter"]
+            int_fields   = ["valid", "enabled"]
+
+            for f in float_fields:
+                if f in data:
+                    p = p.field(f"motor_{f}", float(data[f]))
+
+            for f in int_fields:
+                if f in data:
+                    p = p.field(f"motor_{f}", int(data[f]))
+
+            if "direction" in data:
+                p = p.field("motor_direction", str(data["direction"]))
+
+            if "emcy" in data and isinstance(data["emcy"], dict):
+                emcy = data["emcy"]
+                if "active" in emcy:
+                    p = p.field("motor_emcy_active", int(bool(emcy["active"])))
+                if "code" in emcy:
+                    p = p.field("motor_emcy_code", int(emcy["code"]))
+                if "event" in emcy:
+                    p = p.field("motor_emcy_event", int(emcy["event"]))
+
+            if not ts:
+                log_warn(f"Missing ts in motor payload")
+                return
+
+            p = p.time(datetime.fromisoformat(ts.replace("Z", "+00:00")))
+
+            write_api.write(bucket=INFLUXDB_BUCKET, org=INFLUXDB_ORG, record=p)
+            log("motor", f"valid={data.get('valid')} enabled={data.get('enabled')} direction={data.get('direction')} speed={data.get('speed')} current={data.get('current')} voltage_dc={data.get('voltage_dc')} torque={data.get('torque')} temp_motor={data.get('temp_motor')} temp_inverter={data.get('temp_inverter')} power={data.get('power')} ts={ts}")
+
+        except Exception as e:
+
+            log_warn(f"Invalid motor payload: {e}")
+
+        return
+
+    # =========================================================
+    # GPS JSON batch handling
+    # =========================================================
+
+    if topic_key == "gps":
+
+        try:
+
+            data = json.loads(payload)
+            ts = data.get("ts")
+
+            p = Point("telemetry").tag("object", "boat")
+
+            float_fields = ["latitude", "longitude", "altitude", "speed", "roll", "pitch", "heading"]
+            int_fields   = ["valid", "status", "Nsatellites",
+                            "imu_valid", "fix_type", "satellites",
+                            "status_stale", "position_stale", "speed_stale",
+                            "attitude_stale", "imu_stale", "can_rx_count", "imu_dropped_count"]
+
+            for f in float_fields:
+                if f in data:
+                    p = p.field(f"gps_{f}", float(data[f]))
+
+            for f in int_fields:
+                if f in data:
+                    p = p.field(f"gps_{f}", int(data[f]))
+
+            if not ts:
+                log_warn(f"Missing ts in gps payload")
+                return
+
+            p = p.time(datetime.fromisoformat(ts.replace("Z", "+00:00")))
+
+            write_api.write(bucket=INFLUXDB_BUCKET, org=INFLUXDB_ORG, record=p)
+            log("gps", f"lat={data.get('latitude')} lon={data.get('longitude')} speed={data.get('speed')} sats={data.get('Nsatellites', data.get('satellites'))} ts={ts}")
+
+        except Exception as e:
+
+            log_warn(f"Invalid gps payload: {e}")
+
+        return
+
+    # =========================================================
+    # DHT JSON batch handling
+    # =========================================================
+
+    if topic_key == "dht":
+
+        try:
+
+            data = json.loads(payload)
+            ts = data.get("ts")
+
+            p = Point("telemetry").tag("object", "boat")
+
+            if "temp" in data:
+                p = p.field("dht_temp", float(data["temp"]))
+            if "hum" in data:
+                p = p.field("dht_hum", float(data["hum"]))
+
+            if not ts:
+                log_warn(f"Missing ts in dht payload")
+                return
+
+            p = p.time(datetime.fromisoformat(ts.replace("Z", "+00:00")))
+
+            write_api.write(bucket=INFLUXDB_BUCKET, org=INFLUXDB_ORG, record=p)
+            log("dht", f"temp={data.get('temp')} hum={data.get('hum')} ts={ts}")
+
+        except Exception as e:
+
+            log_warn(f"Invalid dht payload: {e}")
+
+        return
+
+    # =========================================================
+    # Battery JSON batch handling (battery/1 and battery/2)
+    # =========================================================
+
+    if topic_key in ("battery/1", "battery/2"):
+
+        batt_num = topic_key.split("/")[1]
+
+        try:
+
+            data = json.loads(payload)
+            ts = data.get("ts")
+
+            if not ts:
+                log_warn(f"Missing ts in {topic_key} payload")
+                return
+
+            p = Point("telemetry").tag("object", "boat").tag("battery", batt_num)
+
+            float_fields = ["voltage", "current", "temperature", "power", "totenergy", "boardtemp"]
+            str_fields   = ["status", "loaddetect"]
+
+            for f in float_fields:
+                if f in data:
+                    p = p.field(f"battery_{f}", float(data[f]))
+
+            for f in str_fields:
+                if f in data:
+                    p = p.field(f"battery_{f}", str(data[f]))
+
+            p = p.time(datetime.fromisoformat(ts.replace("Z", "+00:00")))
+
+            write_api.write(bucket=INFLUXDB_BUCKET, org=INFLUXDB_ORG, record=p)
+            log(topic_key, f"voltage={data.get('voltage')} current={data.get('current')} soc={data.get('soc')} status={data.get('status')} ts={ts}")
+
+        except Exception as e:
+
+            log_warn(f"Invalid {topic_key} payload: {e}")
+
+        return
+
+    # =========================================================
+    # Battery fault handling (JSON {"status":"FAULT"/"OK","ts":"..."})
+    # =========================================================
+
+    if topic_key.startswith("battery/") and "/fault/" in topic_key:
+
+        try:
+
+            data = json.loads(payload)
+            ts = data.get("ts")
+            status = data.get("status", "")
+
+            if not ts:
+                log_warn(f"Missing ts in {topic_key} payload")
+                return
+
+            field_name = topic_key.replace("/", "_")
+            p = (
+                Point("telemetry")
+                .tag("object", "boat")
+                .field(field_name, str(status))
+                .time(datetime.fromisoformat(ts.replace("Z", "+00:00")))
+            )
+
+            write_api.write(bucket=INFLUXDB_BUCKET, org=INFLUXDB_ORG, record=p)
+            log(topic_key, f"status={status} ts={ts}")
+
+        except Exception as e:
+
+            log_warn(f"Invalid {topic_key} payload: {e}")
+
+        return
+
+    # =========================================================
+    # Motor emcy handling (JSON {"code":X,"event":Y}, no ts)
+    # =========================================================
+
+    if topic_key == "motor/emcy":
+
+        try:
+
+            data = json.loads(payload)
+
+            p = (
+                Point("telemetry")
+                .tag("object", "boat")
+                .field("motor_emcy_code", int(data.get("code", 0)))
+                .field("motor_emcy_event", int(data.get("event", 0)))
+            )
+
+            write_api.write(bucket=INFLUXDB_BUCKET, org=INFLUXDB_ORG, record=p)
+            log("motor/emcy", f"code={data.get('code')} event={data.get('event')}")
 
         except Exception as e:
 
             log_warn(f"Invalid motor/emcy payload: {e}")
 
         return
-
-    # =========================================================
-    # Validate and parse payload
-    # =========================================================
-    expected_type = TOPIC_TYPES.get(topic_key)
-
-    try:
-        if expected_type == float:
-            value = float(payload)
-        elif expected_type == int:
-            value = int(payload)
-        elif expected_type == str:
-            value = payload
-        else:
-            value = payload
-
-    except ValueError:
-        log_warn(f"Invalid payload type for {topic_key}: {payload}")
-        return
-
-    # =========================================================
-    # Validate motor direction enum
-    # =========================================================
-    if topic_key == "motor/direction":
-        if value not in VALID_MOTOR_DIRECTIONS:
-            log_warn(f"Invalid motor direction: {value}")
-            return
-
-    # =========================================================
-    # Validate gps/valid
-    # =========================================================
-    if topic_key == "gps/valid":
-        if value not in (0, 1):
-            log_warn(f"Invalid gps/valid value: {value}")
-            return
-
-    # Write to InfluxDB
-    p = (
-        Point("telemetry")
-        .tag("object", "boat")
-        .field(
-            topic_key.replace("/", "_"),
-            value
-        )
-    )
-
-    write_api.write(
-        bucket=INFLUXDB_BUCKET,
-        org=INFLUXDB_ORG,
-        record=p
-    )
-
-    log(topic_key, value)
 
 
 # =========================================================
