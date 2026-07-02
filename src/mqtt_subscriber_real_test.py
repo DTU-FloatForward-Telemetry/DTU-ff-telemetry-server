@@ -97,7 +97,7 @@ client_db = InfluxDBClient(
 write_api = client_db.write_api(
     write_options=WriteOptions(
         batch_size=50,
-        flush_interval=200
+        flush_interval=50
     )
 )
 
