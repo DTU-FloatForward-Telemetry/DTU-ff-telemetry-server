@@ -35,11 +35,11 @@ COLORS = {
 def log(topic_key: str, value):
     group = topic_key.split("/")[0]
     color = COLORS.get(group, COLORS["RESET"])
-    ts = datetime.now().strftime("%H:%M:%S")
+    ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
     print(f"{COLORS['DIM']}{ts}{COLORS['RESET']}  {color}{topic_key:<35}{COLORS['RESET']} {value}")
 
 def log_warn(msg: str):
-    ts = datetime.now().strftime("%H:%M:%S")
+    ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
     print(f"{COLORS['DIM']}{ts}{COLORS['RESET']}  {COLORS['WARN']}{msg}{COLORS['RESET']}")
 
 # =========================================================
