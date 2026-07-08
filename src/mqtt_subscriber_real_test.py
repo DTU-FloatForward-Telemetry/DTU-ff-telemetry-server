@@ -1,8 +1,7 @@
 import os
 import json
-import ssl
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime
 
 import paho.mqtt.client as mqtt
 from dotenv import load_dotenv
@@ -11,16 +10,11 @@ from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import WriteOptions
 
 
-# =========================================================
-# Terminal colors
-# =========================================================
-
 COLORS = {
     "battery": "\033[33m",
     "battery_lv": "\033[33m",
     "motor": "\033[36m",
     "gps": "\033[32m",
-    "imu": "\033[35m",
     "dht": "\033[34m",
     "thrust": "\033[96m",
     "WARN": "\033[91m",
@@ -33,7 +27,7 @@ def log(topic_key: str, value):
     group = topic_key.split("/")[0]
     color = COLORS.get(group, COLORS["RESET"])
     ts = datetime.now().strftime("%H:%M:%S")
-    print(f"{COLORS['DIM']}{ts}{COLORS['RESET']}  {color}{topic_key:<25}{COLORS['RESET']} {value}")
+    print(f"{COLORS['DIM']}{ts}{COLORS['RESET']}  {color}{topic_key:<35}{COLORS['RESET']} {value}")
 
 
 def log_warn(msg: str):
@@ -41,28 +35,14 @@ def log_warn(msg: str):
     print(f"{COLORS['DIM']}{ts}{COLORS['RESET']}  {COLORS['WARN']}{msg}{COLORS['RESET']}")
 
 
-# =========================================================
-# Load environment variables
-# =========================================================
-
 BASE_DIR = Path(__file__).resolve().parent.parent
 ENV_PATH = BASE_DIR / "config" / ".env"
 load_dotenv(ENV_PATH)
-
-
-# =========================================================
-# HiveMQ Cloud details
-# =========================================================
 
 BROKER = os.getenv("HIVEMQ_HOST")
 PORT = int(os.getenv("HIVEMQ_PORT", "8883"))
 USER = os.getenv("HIVEMQ_USER")
 PASSWORD = os.getenv("HIVEMQ_PASSWORD")
-
-
-# =========================================================
-# InfluxDB details
-# =========================================================
 
 INFLUXDB_URL = os.getenv("INFLUX_URL")
 INFLUXDB_TOKEN = os.getenv("INFLUX_TOKEN")
@@ -74,10 +54,6 @@ print(f"DEBUG: INFLUX_URL is {INFLUXDB_URL}")
 if INFLUXDB_URL is None:
     raise ValueError("INFLUX_URL not found! Check your .env file path and keys.")
 
-
-# =========================================================
-# InfluxDB client
-# =========================================================
 
 client_db = InfluxDBClient(
     url=INFLUXDB_URL,
@@ -93,11 +69,8 @@ write_api = client_db.write_api(
 )
 
 
-# =========================================================
-# Accepted JSON topics
-# =========================================================
-
 ALLOWED_TOPICS = {
+    # JSON topics
     "gps",
     "battery/1",
     "battery/2",
@@ -105,18 +78,22 @@ ALLOWED_TOPICS = {
     "thrust",
     "motor",
     "dht",
+
+    # Battery 1 fault topics
+    "battery/1/fault/thermal_runaway",
+    "battery/1/fault/dischg_mos_stuck",
+    "battery/1/fault/short_circuit",
+    "battery/1/fault/chg_mos_stuck",
+
+    # Battery 2 fault topics
+    "battery/2/fault/thermal_runaway",
+    "battery/2/fault/dischg_mos_stuck",
+    "battery/2/fault/short_circuit",
+    "battery/2/fault/chg_mos_stuck",
 }
 
 
-# =========================================================
-# Helpers
-# =========================================================
-
 def parse_ts(data: dict):
-    """
-    Parses ISO timestamp from JSON field 'ts'.
-    Example: 2026-07-08T11:41:42.952Z
-    """
     ts = data.get("ts")
 
     if not ts:
@@ -145,10 +122,6 @@ def write_point(point: Point):
         record=point,
     )
 
-
-# =========================================================
-# JSON topic handlers
-# =========================================================
 
 def handle_gps(data: dict):
     p = (
@@ -284,18 +257,27 @@ def handle_dht(data: dict):
     log("dht", "written")
 
 
-# =========================================================
-# MQTT callbacks
-# =========================================================
+def handle_battery_fault(topic_key: str, payload: str):
+    try:
+        value = int(payload)
+    except ValueError:
+        log_warn(f"Invalid fault payload for {topic_key}: {payload}")
+        return
+
+    p = (
+        Point("telemetry")
+        .tag("object", "boat")
+        .field(topic_key.replace("/", "_"), value)
+    )
+
+    write_point(p)
+
+    log(topic_key, value)
+
 
 def on_connect(client, userdata, flags, rc, properties=None):
     print(f"Connected: {rc}")
-
-    client.subscribe(
-        "boat/telemetry/#",
-        qos=0,
-    )
-
+    client.subscribe("boat/telemetry/#", qos=0)
     print("Subscribed to boat/telemetry/#")
 
 
@@ -312,6 +294,10 @@ def on_message(client, userdata, msg):
 
     if topic_key not in ALLOWED_TOPICS:
         log_warn(f"Ignored unknown topic: {msg.topic}")
+        return
+
+    if topic_key.startswith("battery/") and "/fault/" in topic_key:
+        handle_battery_fault(topic_key, payload)
         return
 
     try:
@@ -352,10 +338,6 @@ def on_message(client, userdata, msg):
         log_warn(f"Error handling {topic_key}: {e}")
 
 
-# =========================================================
-# MQTT client setup
-# =========================================================
-
 client = mqtt.Client(
     client_id="boat_telemetry_bridge_json",
     protocol=mqtt.MQTTv5,
@@ -376,11 +358,6 @@ client.tls_set()
 client.on_connect = on_connect
 client.on_message = on_message
 client.on_disconnect = on_disconnect
-
-
-# =========================================================
-# Connect
-# =========================================================
 
 client.connect(
     BROKER,
