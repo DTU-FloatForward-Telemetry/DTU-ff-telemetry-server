@@ -162,8 +162,14 @@ def parse_payload(payload: str):
 
 
 def format_data(data: dict) -> str:
-    """Render every key/value in the parsed payload, e.g. for logging."""
-    return " ".join(f"{k}={v}" for k, v in data.items())
+    """Render every key/value in the parsed payload, e.g. for logging.
+    "ts" is always shown last, regardless of its position in the payload."""
+    parts = [f"{k}={v}" for k, v in data.items() if k != "ts"]
+
+    if "ts" in data:
+        parts.append(f"ts={data['ts']}")
+
+    return " ".join(parts)
 
 
 def handle_gps(data: dict):
@@ -252,12 +258,7 @@ def handle_thrust(data: dict):
     p = add_time(p, data)
     write_point(p)
 
-    log(
-        "thrust",
-        f"loadcell={data.get('loadcell_n')} "
-        f"propeller={data.get('propeller_n')} "
-        f"angle={data.get('angle_deg')}",
-    )
+    log("thrust", format_data(data))
 
 
 def handle_motor(data: dict):
