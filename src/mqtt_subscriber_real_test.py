@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import WriteOptions
 
+from reactivex.scheduler import ThreadPoolScheduler
 
 COLORS = {
     "battery": "\033[33m",
@@ -64,10 +65,12 @@ client_db = InfluxDBClient(
     org=INFLUXDB_ORG,
 )
 
+# Reavisar esta
 write_api = client_db.write_api(
     write_options=WriteOptions(
-        batch_size=50,
-        flush_interval=50,
+        batch_size=500,
+        flush_interval=1000,
+        write_scheduler=ThreadPoolScheduler(max_workers=4)
     )
 )
 
@@ -212,11 +215,11 @@ def handle_battery(data: dict, battery_id: int):
         .field(f"{prefix}_current", float(data["current"]))
         .field(f"{prefix}_temperature", float(data["temperature"]))
         .field(f"{prefix}_power", float(data["power"]))
-        .field(f"{prefix}_totenergy", float(data["totenergy"]))
+        #.field(f"{prefix}_totenergy", float(data["totenergy"]))
         .field(f"{prefix}_boardtemp", float(data["boardtemp"]))
         .field(f"{prefix}_soc", float(data["soc"]))
         .field(f"{prefix}_status", str(data["status"]))
-        .field(f"{prefix}_loaddetect", str(data["loaddetect"]))
+        #.field(f"{prefix}_loaddetect", str(data["loaddetect"]))
     )
 
     p = add_time(p, data)
@@ -276,8 +279,8 @@ def handle_motor(data: dict):
     if "speed" in data:
         p.field("motor_speed", float(data["speed"]))
 
-    if "direction" in data:
-        p.field("motor_direction", str(data["direction"]))
+    #if "direction" in data:
+    #    p.field("motor_direction", str(data["direction"]))
 
     if "current" in data:
         p.field("motor_current", float(data["current"]))
@@ -333,7 +336,7 @@ def handle_dht(data: dict):
     log("dht", format_data(data))
 
 
-def handle_imu_batch(payload: str):
+'''def handle_imu_batch(payload: str):
     try:
         imu_data = json.loads(payload)
 
@@ -387,7 +390,7 @@ def handle_imu_batch(payload: str):
         log("imu/batch", f"{len(points)} samples")
 
     except Exception as e:
-        log_warn(f"Invalid IMU batch: {e}")
+        log_warn(f"Invalid IMU batch: {e}")'''
 
 
 def handle_battery_fault(topic_key: str, payload: str):
@@ -434,9 +437,9 @@ def on_message(client, userdata, msg):
         handle_battery_fault(topic_key, payload)
         return
 
-    if topic_key == "imu/batch":
+    '''if topic_key == "imu/batch":
         handle_imu_batch(payload)
-        return
+        return'''
 
     data = parse_payload(payload)
     if data is None:
@@ -480,6 +483,7 @@ client = mqtt.Client(
     protocol=mqtt.MQTTv5,
 )
 
+# Revisar esta
 client.reconnect_delay_set(
     min_delay=1,
     max_delay=30,
