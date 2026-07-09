@@ -1,4 +1,5 @@
 import os
+import logging
 import paho.mqtt.client as mqtt
 from pathlib import Path
 from datetime import datetime
@@ -32,15 +33,19 @@ COLORS = {
     "DIM":     "\033[2m",
 }
 
+def ts_now() -> str:
+    return datetime.now().strftime("%H:%M:%S.%f")[:-3]
+
 def log(topic_key: str, value):
     group = topic_key.split("/")[0]
     color = COLORS.get(group, COLORS["RESET"])
-    ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-    print(f"{COLORS['DIM']}{ts}{COLORS['RESET']}  {color}{topic_key:<35}{COLORS['RESET']} {value}")
+    print(f"{COLORS['DIM']}{ts_now()}{COLORS['RESET']}  {color}{topic_key:<35}{COLORS['RESET']} {value}")
 
 def log_warn(msg: str):
-    ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-    print(f"{COLORS['DIM']}{ts}{COLORS['RESET']}  {COLORS['WARN']}{msg}{COLORS['RESET']}")
+    print(f"{COLORS['DIM']}{ts_now()}{COLORS['RESET']}  {COLORS['WARN']}{msg}{COLORS['RESET']}")
+
+def log_info(msg: str):
+    print(f"{COLORS['DIM']}{ts_now()}{COLORS['RESET']}  {msg}")
 
 # =========================================================
 # Load environment variables
@@ -292,6 +297,17 @@ VALID_MOTOR_DIRECTIONS = {
     "Neutral",
 }
 
+# =========================================================
+# Gap watchdog
+# =========================================================
+# Tracks the time of the last message received (any topic).
+# If the next message arrives after a pause longer than the
+# threshold, that pause is logged as a gap.
+
+GAP_THRESHOLD_SECONDS = 2.0
+
+_last_msg_time = None
+
 
 # =========================================================
 # MQTT callbacks
@@ -304,7 +320,7 @@ def on_connect(
         rc,
         properties=None
 ):
-    print(f"Connected: {rc}")
+    log_info(f"CONNECTED (rc={rc})")
 
     # Subscribe to all telemetry topics
     client.subscribe(
@@ -312,10 +328,7 @@ def on_connect(
         qos=0
     )
 
-    print(
-        "Subscribed to "
-        "boat/telemetry/#"
-    )
+    log_info("Subscribed to boat/telemetry/#")
 
 
 # =========================================================
@@ -326,17 +339,11 @@ def on_disconnect(
         rc,
         properties=None
 ):
-    print(
-        f"Disconnected from MQTT broker "
-        f"(rc={rc})"
-    )
+    log_warn(f"DISCONNECTED from MQTT broker (rc={rc})")
 
     # rc == 0 means clean disconnect
     if rc != 0:
-        print(
-            "Unexpected disconnection. "
-            "Trying to reconnect..."
-        )
+        log_warn("Unexpected disconnection. Trying to reconnect...")
 
 
 # =========================================================
@@ -346,6 +353,19 @@ def on_message(
         userdata,
         msg
 ):
+    global _last_msg_time
+
+    now = datetime.now()
+    if _last_msg_time is not None:
+        gap = (now - _last_msg_time).total_seconds()
+        if gap > GAP_THRESHOLD_SECONDS:
+            log_warn(
+                f"GAP: {gap:.2f}s with no data "
+                f"({_last_msg_time.strftime('%H:%M:%S.%f')[:-3]} -> "
+                f"{now.strftime('%H:%M:%S.%f')[:-3]})"
+            )
+    _last_msg_time = now
+
     topic_key = msg.topic.replace(
         "boat/telemetry/",
         ""
@@ -530,10 +550,20 @@ def on_message(
 # MQTT client setup
 # =========================================================
 
+# DEBUG shows every PINGREQ/PINGRESP so we can see whether the
+# connection to HiveMQ is alive during a gap.
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s.%(msecs)03d  [paho] %(message)s",
+    datefmt="%H:%M:%S",
+)
+
 client = mqtt.Client(
     client_id="boat_telemetry_bridge",
     protocol=mqtt.MQTTv5
 )
+
+client.enable_logger()
 
 client.reconnect_delay_set(
     min_delay=1,
