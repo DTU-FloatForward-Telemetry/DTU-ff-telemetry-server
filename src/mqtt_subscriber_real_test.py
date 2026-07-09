@@ -373,7 +373,7 @@ def handle_battery_fault(topic_key: str, payload: str):
 
 def on_connect(client, userdata, flags, rc, properties=None):
     print(f"Connected: {rc}")
-    client.subscribe("boat/telemetry/#", qos=0)
+    client.subscribe("boat/telemetry/#", qos=1)
     print("Subscribed to boat/telemetry/#")
 
 
