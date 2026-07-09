@@ -161,6 +161,11 @@ def parse_payload(payload: str):
     return None
 
 
+def format_data(data: dict) -> str:
+    """Render every key/value in the parsed payload, e.g. for logging."""
+    return " ".join(f"{k}={v}" for k, v in data.items())
+
+
 def handle_gps(data: dict):
     p = Point("telemetry").tag("object", "boat")
 
@@ -188,7 +193,7 @@ def handle_gps(data: dict):
     p = add_time(p, data)
     write_point(p)
 
-    log("gps", f"lat={data.get('latitude')} lon={data.get('longitude')}")
+    log("gps", format_data(data))
 
 
 def handle_battery(data: dict, battery_id: int):
@@ -211,7 +216,7 @@ def handle_battery(data: dict, battery_id: int):
     p = add_time(p, data)
     write_point(p)
 
-    log(f"battery/{battery_id}", f"SOC={data['soc']} status={data['status']}")
+    log(f"battery/{battery_id}", format_data(data))
 
 
 def handle_battery_lv(data: dict):
@@ -229,7 +234,7 @@ def handle_battery_lv(data: dict):
     p = add_time(p, data)
     write_point(p)
 
-    log("battery_lv", f"voltage={data.get('voltage')} temp={data.get('temp')}")
+    log("battery_lv", format_data(data))
 
 
 def handle_thrust(data: dict):
@@ -309,7 +314,7 @@ def handle_motor(data: dict):
     p = add_time(p, data)
     write_point(p)
 
-    log("motor", "written")
+    log("motor", format_data(data))
 
 
 def handle_dht(data: dict):
@@ -324,7 +329,7 @@ def handle_dht(data: dict):
     p = add_time(p, data)
     write_point(p)
 
-    log("dht", "written")
+    log("dht", format_data(data))
 
 
 def handle_imu_batch(payload: str):
