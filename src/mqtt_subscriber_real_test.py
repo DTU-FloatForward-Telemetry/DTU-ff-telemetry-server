@@ -148,6 +148,10 @@ ALLOWED_TOPICS = {
     # LV battery
     "battery/3/voltage",
 
+    # LV
+    "lv/voltage",
+    "lv/temp",
+
     # DHT
     "dht/temp",
     "dht/hum",
@@ -234,6 +238,10 @@ TOPIC_TYPES = {
 
     # LV battery
     "battery/3/voltage": float,
+
+    # LV
+    "lv/voltage": float,
+    "lv/temp": float,
 
     # DHT
     "dht/temp": float,
