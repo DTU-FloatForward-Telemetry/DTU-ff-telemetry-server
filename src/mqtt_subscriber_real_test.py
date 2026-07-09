@@ -54,15 +54,10 @@ load_dotenv(ENV_PATH)
 # HiveMQ Cloud details
 # =========================================================
 
-BROKER = os.getenv("HIVEMQ_HOST")
-
-PORT = int(
-    os.getenv("HIVEMQ_PORT", "8883")
-)
-
-USER = os.getenv("HIVEMQ_USER")
-
-PASSWORD = os.getenv("HIVEMQ_PASSWORD")
+BROKER = os.getenv("MQTT_HOST", "localhost")
+PORT = int(os.getenv("MQTT_PORT", "1883"))
+USER = os.getenv("MQTT_USER", "esp32boat")
+PASSWORD = os.getenv("MQTT_PASSWORD", "esp32boatpassword")
 
 # =========================================================
 # InfluxDB details
@@ -545,7 +540,10 @@ client.username_pw_set(
     PASSWORD
 )
 
-client.tls_set()
+client.username_pw_set(USER, PASSWORD)
+
+# No TLS for local Mosquitto on port 1883
+# client.tls_set()
 
 client.on_connect = on_connect
 client.on_message = on_message
