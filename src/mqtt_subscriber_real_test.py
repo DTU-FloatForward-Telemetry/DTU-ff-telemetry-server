@@ -1,7 +1,8 @@
 import os
 import json
+import ast
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import paho.mqtt.client as mqtt
 from dotenv import load_dotenv
@@ -17,6 +18,7 @@ COLORS = {
     "gps": "\033[32m",
     "dht": "\033[34m",
     "thrust": "\033[96m",
+    "imu": "\033[35m",
     "WARN": "\033[91m",
     "RESET": "\033[0m",
     "DIM": "\033[2m",
@@ -79,6 +81,9 @@ ALLOWED_TOPICS = {
     "motor",
     "dht",
 
+    # Unchanged from main branch
+    "imu/batch",
+
     # Battery 1 fault topics
     "battery/1/fault/thermal_runaway",
     "battery/1/fault/dischg_mos_stuck",
@@ -123,23 +128,52 @@ def write_point(point: Point):
     )
 
 
+def parse_payload(payload: str):
+    """Parse a payload as JSON, falling back to Python dict-literal
+    syntax (e.g. single quotes) if standard JSON parsing fails."""
+    try:
+        return json.loads(payload)
+    except Exception:
+        pass
+
+    try:
+        value = ast.literal_eval(payload)
+        if isinstance(value, dict):
+            return value
+    except Exception:
+        pass
+
+    return None
+
+
 def handle_gps(data: dict):
-    p = (
-        Point("telemetry")
-        .tag("object", "boat")
-        .field("gps_valid", int(data["valid"]))
-        .field("gps_status", int(data["status"]))
-        .field("gps_Nsatellites", int(data["Nsatellites"]))
-        .field("gps_latitude", float(data["latitude"]))
-        .field("gps_longitude", float(data["longitude"]))
-        .field("gps_altitude", float(data["altitude"]))
-        .field("gps_speed", float(data["speed"]))
-    )
+    p = Point("telemetry").tag("object", "boat")
+
+    if "valid" in data:
+        p.field("gps_valid", int(data["valid"]))
+
+    if "status" in data:
+        p.field("gps_status", int(data["status"]))
+
+    if "Nsatellites" in data:
+        p.field("gps_Nsatellites", int(data["Nsatellites"]))
+
+    if "latitude" in data:
+        p.field("gps_latitude", float(data["latitude"]))
+
+    if "longitude" in data:
+        p.field("gps_longitude", float(data["longitude"]))
+
+    if "altitude" in data:
+        p.field("gps_altitude", float(data["altitude"]))
+
+    if "speed" in data:
+        p.field("gps_speed", float(data["speed"]))
 
     p = add_time(p, data)
     write_point(p)
 
-    log("gps", f"lat={data['latitude']} lon={data['longitude']}")
+    log("gps", f"lat={data.get('latitude')} lon={data.get('longitude')}")
 
 
 def handle_battery(data: dict, battery_id: int):
@@ -166,17 +200,21 @@ def handle_battery(data: dict, battery_id: int):
 
 
 def handle_battery_lv(data: dict):
-    p = (
-        Point("telemetry")
-        .tag("object", "boat")
-        .field("battery_3_voltage", float(data["voltage"]))
-        .field("battery_3_current", float(data["current"]))
-    )
+    p = Point("telemetry").tag("object", "boat")
+
+    if "voltage" in data:
+        p.field("lv_voltage", float(data["voltage"]))
+
+    if "temp" in data:
+        p.field("lv_temp", float(data["temp"]))
+
+    if "current" in data:
+        p.field("lv_current", float(data["current"]))
 
     p = add_time(p, data)
     write_point(p)
 
-    log("battery_lv", f"voltage={data['voltage']} current={data['current']}")
+    log("battery_lv", f"voltage={data.get('voltage')} temp={data.get('temp')}")
 
 
 def handle_thrust(data: dict):
@@ -257,22 +295,80 @@ def handle_dht(data: dict):
     log("dht", "written")
 
 
-def handle_battery_fault(topic_key: str, payload: str):
+def handle_imu_batch(payload: str):
     try:
-        value = int(payload)
-    except ValueError:
+        imu_data = json.loads(payload)
+
+        samples = imu_data.get("samples", [])
+        count = imu_data.get("count", 0)
+
+        if count != len(samples):
+            log_warn("IMU count mismatch")
+            return
+
+        base_time = parse_ts(imu_data)
+        base_t_boot = samples[0]["t"] if samples and "t" in samples[0] else None
+
+        points = []
+        required_keys = {"t", "ax", "ay", "az", "gx", "gy", "gz"}
+
+        for sample in samples:
+            if not required_keys.issubset(sample):
+                log_warn("Invalid IMU sample keys")
+                continue
+
+            p = (
+                Point("imu")
+                .tag("object", "boat")
+                .field("ax", float(sample["ax"]))
+                .field("ay", float(sample["ay"]))
+                .field("az", float(sample["az"]))
+                .field("gx", float(sample["gx"]))
+                .field("gy", float(sample["gy"]))
+                .field("gz", float(sample["gz"]))
+                .field("t_boot_ms", int(sample["t"]))
+            )
+
+            # Each sample shares the batch's "ts", so offset by this
+            # sample's own boot-relative "t" to give every point a
+            # distinct, correctly-ordered timestamp. Without this,
+            # all samples in the batch would land on the same
+            # timestamp and overwrite each other in InfluxDB.
+            if base_time is not None and base_t_boot is not None:
+                offset_ms = int(sample["t"]) - int(base_t_boot)
+                p.time(base_time + timedelta(milliseconds=offset_ms), WritePrecision.NS)
+
+            points.append(p)
+
+        write_api.write(
+            bucket=INFLUXDB_BUCKET,
+            org=INFLUXDB_ORG,
+            record=points,
+        )
+
+        log("imu/batch", f"{len(points)} samples")
+
+    except Exception as e:
+        log_warn(f"Invalid IMU batch: {e}")
+
+
+def handle_battery_fault(topic_key: str, payload: str):
+    data = parse_payload(payload)
+
+    if data is None or "status" not in data:
         log_warn(f"Invalid fault payload for {topic_key}: {payload}")
         return
 
     p = (
         Point("telemetry")
         .tag("object", "boat")
-        .field(topic_key.replace("/", "_"), value)
+        .field(topic_key.replace("/", "_"), str(data["status"]))
     )
 
+    p = add_time(p, data)
     write_point(p)
 
-    log(topic_key, value)
+    log(topic_key, data["status"])
 
 
 def on_connect(client, userdata, flags, rc, properties=None):
@@ -300,10 +396,13 @@ def on_message(client, userdata, msg):
         handle_battery_fault(topic_key, payload)
         return
 
-    try:
-        data = json.loads(payload)
-    except Exception as e:
-        log_warn(f"Invalid JSON on {topic_key}: {e}")
+    if topic_key == "imu/batch":
+        handle_imu_batch(payload)
+        return
+
+    data = parse_payload(payload)
+    if data is None:
+        log_warn(f"Invalid JSON on {topic_key}: {payload}")
         return
 
     try:
