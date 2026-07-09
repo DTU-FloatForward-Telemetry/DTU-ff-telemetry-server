@@ -1,6 +1,7 @@
 import os
 import json
 import ast
+import re
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -128,9 +129,23 @@ def write_point(point: Point):
     )
 
 
+# Some ECU messages contain malformed fragments, e.g.
+# `"emcy_code: 0"` (colon inside the string, not real JSON key: value)
+# instead of `"emcy_code": 0`. Repair these known quirks before parsing.
+_QUOTED_KV_BUG = re.compile(r'"(\w+):\s*(-?\d+(?:\.\d+)?)"')
+
+
+def repair_known_json_bugs(payload: str) -> str:
+    payload = _QUOTED_KV_BUG.sub(r'"\1": \2', payload)
+    payload = payload.replace('"cu rrent"', '"current"')
+    return payload
+
+
 def parse_payload(payload: str):
     """Parse a payload as JSON, falling back to Python dict-literal
     syntax (e.g. single quotes) if standard JSON parsing fails."""
+    payload = repair_known_json_bugs(payload)
+
     try:
         return json.loads(payload)
     except Exception:
@@ -218,18 +233,26 @@ def handle_battery_lv(data: dict):
 
 
 def handle_thrust(data: dict):
-    p = (
-        Point("telemetry")
-        .tag("object", "boat")
-        .field("thrust_loadcell_n", float(data["loadcell_n"]))
-        .field("thrust_propeller_n", float(data["propeller_n"]))
-        .field("rotary_angle_deg", float(data["angle_deg"]))
-    )
+    p = Point("telemetry").tag("object", "boat")
+
+    if "loadcell_n" in data:
+        p.field("thrust_loadcell_n", float(data["loadcell_n"]))
+
+    if "propeller_n" in data:
+        p.field("thrust_propeller_n", float(data["propeller_n"]))
+
+    if "angle_deg" in data:
+        p.field("rotary_angle_deg", float(data["angle_deg"]))
 
     p = add_time(p, data)
     write_point(p)
 
-    log("thrust", f"loadcell={data['loadcell_n']} propeller={data['propeller_n']}")
+    log(
+        "thrust",
+        f"loadcell={data.get('loadcell_n')} "
+        f"propeller={data.get('propeller_n')} "
+        f"angle={data.get('angle_deg')}",
+    )
 
 
 def handle_motor(data: dict):
@@ -264,6 +287,15 @@ def handle_motor(data: dict):
 
     if "temp_inverter" in data:
         p.field("motor_temp_inverter", float(data["temp_inverter"]))
+
+    # Real payloads send these as flat top-level fields (after the
+    # `repair_known_json_bugs` fix), not nested under "emcy" - but
+    # keep the nested form too in case the ECU ever fixes it properly.
+    if "emcy_code" in data:
+        p.field("motor_emcy_code", int(data["emcy_code"]))
+
+    if "emcy_event" in data:
+        p.field("motor_emcy_event", int(data["emcy_event"]))
 
     if "emcy" in data and isinstance(data["emcy"], dict):
         emcy = data["emcy"]
