@@ -14,8 +14,6 @@ from influxdb_client import (
 from influxdb_client.client.write_api import (
     WriteOptions,
 )
-from influxdb_client.client.write_api import SYNCHRONOUS
-from time import perf_counter
 # =========================================================
 # Terminal colors
 # =========================================================
@@ -95,13 +93,28 @@ client_db = InfluxDBClient(
     org=INFLUXDB_ORG,
 )
 
-'''write_api = client_db.write_api(
+def on_write_success(conf, data):
+    ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    lines = data.count("\n") + 1
+    print(f"{ts}  INFLUX OK  ({lines} line(s))")
+
+def on_write_error(conf, data, exception):
+    ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    print(f"{ts}  INFLUX WRITE FAILED (final, after retries): {exception}")
+
+def on_write_retry(conf, data, exception):
+    ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    print(f"{ts}  INFLUX RETRY: {exception}")
+
+write_api = client_db.write_api(
     write_options=WriteOptions(
         batch_size=50,
-        flush_interval=50
+        flush_interval=50,
+        success_callback=on_write_success,
+        error_callback=on_write_error,
+        retry_callback=on_write_retry,
     )
-)'''
-write_api = client_db.write_api(write_options=SYNCHRONOUS)
+)
 
 # =========================================================
 # Topics we want to accept
@@ -348,8 +361,6 @@ def on_message(
         userdata,
         msg
 ):
-    
-    t0 = perf_counter()
     topic_key = msg.topic.replace(
         "boat/telemetry/",
         ""
@@ -424,14 +435,12 @@ def on_message(
                 )
 
                 points.append(p)
-            
-            print("BEFORE WRITE", perf_counter)
+
             write_api.write(
                 bucket=INFLUXDB_BUCKET,
                 org=INFLUXDB_ORG,
                 record=points
             )
-            print("AFTER WRITE", perf_counter)
 
             log("imu/batch", f"{len(points)} samples")
 
@@ -463,13 +472,12 @@ def on_message(
                     int(emcy["event"])
                 )
             )
-            print("BEFORE WRITE", perf_counter)
+
             write_api.write(
                 bucket=INFLUXDB_BUCKET,
                 org=INFLUXDB_ORG,
                 record=p
             )
-            print("AFTER WRITE", perf_counter)
 
             log("motor/emcy", f"code={emcy['code']} event={emcy['event']}")
 
